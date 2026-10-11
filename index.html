@@ -129,7 +129,13 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;heigh
 /* ---------- sources ---------- */
 .tile{height:64px;border-radius:18px;font-size:14px;font-weight:500}
 .tile:active{background:var(--s2)}
-.app{height:84px;border-radius:var(--r);font-weight:600;font-size:15px;letter-spacing:-.01em;border:1px solid var(--line)}
+.app{height:72px;border-radius:18px;font-weight:700;font-size:13px;letter-spacing:-.01em;border:1px solid var(--line);padding:0 6px;text-align:center;line-height:1.15}
+.installed{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 8px}
+.ia{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:11px;color:var(--mut);min-width:0}
+.ia span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ia .ic{width:60px;height:60px;border-radius:16px;overflow:hidden;display:grid;place-items:center;font-size:20px;font-weight:700;color:var(--txt)}
+.ia .ic{position:relative}
+.ia img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 
 /* ---------- tab bar ---------- */
 nav{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 12px);display:flex;gap:4px;padding:5px;border-radius:30px;background:rgba(28,28,34,.7);-webkit-backdrop-filter:blur(24px) saturate(1.6);backdrop-filter:blur(24px) saturate(1.6);border:1px solid var(--line);box-shadow:0 10px 30px #000a;z-index:5}
@@ -344,14 +350,29 @@ input[type=text]:focus{border-color:color-mix(in srgb,var(--acc) 70%,transparent
   <button class="tile glass" data-app="com.webos.app.livetv" style="width:100%;margin-top:10px">TV en directo</button>
 
   <div class="label">Apps</div>
-  <div class="row r2">
+  <div class="row r3">
     <button class="app" data-app="netflix" style="background:#141414;color:#e50914">NETFLIX</button>
-    <button class="app" data-app="youtube.leanback.v4" style="background:#181818">YouTube</button>
+    <button class="app" data-appname="\bhbo\b|^max$" style="background:#002be7">HBO Max</button>
+    <button class="app" data-appname="movistar" style="background:#0b2739;color:#2fb4ff">Movistar Plus+</button>
     <button class="app" data-app="amazon" style="background:#0f1b2a;color:#7ec8ff">prime video</button>
     <button class="app" data-app="com.disney.disneyplus-prod" style="background:#0b1a3a">Disney+</button>
+    <button class="app" data-app="youtube.leanback.v4" style="background:#181818">YouTube</button>
     <button class="app" data-app="com.apple.appletv" style="background:#111">Apple TV</button>
+    <button class="app" data-appname="dazn" style="background:#0c161c;color:#f8fc00">DAZN</button>
+    <button class="app" data-appname="skyshowtime" style="background:linear-gradient(135deg,#1b1464,#000)">SkyShowtime</button>
+    <button class="app" data-appname="filmin" style="background:#141414;color:#ff2d55">Filmin</button>
+    <button class="app" data-appname="atres" style="background:#2a1200;color:#ff7a1a">atresplayer</button>
+    <button class="app" data-appname="rtve" style="background:#2a0006;color:#ff4d5e">RTVE Play</button>
+    <button class="app" data-appname="mitele" style="background:#1a1a2e">mitele</button>
+    <button class="app" data-appname="twitch" style="background:#2a1352;color:#c8a8ff">Twitch</button>
+    <button class="app" data-appname="crunchyroll" style="background:#2a1608;color:#f47521">Crunchyroll</button>
     <button class="app" data-app="spotify-beehive" style="background:#0d1f14;color:#1ed760">Spotify</button>
+    <button class="app" data-appname="pluto" style="background:#111;color:#fff200">Pluto TV</button>
+    <button class="app" data-appname="^plex$" style="background:#1f1f1f;color:#e5a00d">Plex</button>
   </div>
+
+  <div class="label" style="display:flex;justify-content:space-between;align-items:center">Instaladas en la tele <button id="reloadApps" style="font-size:12px;color:var(--mut);letter-spacing:0;text-transform:none">Actualizar</button></div>
+  <div class="installed" id="installed"><p class="note" style="grid-column:1/-1;margin:0">Conecta con la tele para ver todas sus apps.</p></div>
 </main>
 
 <nav>
@@ -544,6 +565,7 @@ function connect(){
         if ($('#sheet').classList.contains('open')) openSheet(null);
         openPointer();
         refreshPicture();
+        loadApps();
       } else if (m.type === 'error') {
         setStatus('Rechazado'); toast(m.error || 'Emparejamiento rechazado');
       }
@@ -606,6 +628,41 @@ async function refreshPicture(){
   } catch (e) { console.warn(e); }
 }
 
+/* ---------- installed apps ---------- */
+// Apps whose webOS id varies by region/version are launched by matching their title.
+let launchPoints = null;
+async function loadApps(){
+  try {
+    const r = await request('ssap://com.webos.applicationManager/listLaunchPoints');
+    launchPoints = (r.launchPoints || []).sort((a, b) => a.title.localeCompare(b.title));
+    renderInstalled();
+  } catch (e) { console.warn(e); }
+}
+async function launchByName(pattern, label){
+  if (!launchPoints) await loadApps();
+  if (!launchPoints) return;
+  const re = new RegExp(pattern, 'i');
+  const lp = launchPoints.find(l => re.test(l.title.trim()));
+  if (!lp) return toast(`${label} no está instalada en la tele`);
+  return request('ssap://system.launcher/launch', { id: lp.id });
+}
+// Icons are served by the TV over http:3000; use the secure port when connected over wss.
+function iconUrl(u){
+  if (!u) return '';
+  return isInsecure() ? u : u.replace(/^http:\/\/([^/:]+):3000/, 'https://$1:3001');
+}
+function renderInstalled(){
+  const esc = s => s.replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' })[c]);
+  $('#installed').innerHTML = launchPoints.map(l => `
+    <button class="ia" data-app="${esc(l.id)}">
+      <div class="ic glass" style="background:${esc(l.bgColor || '')}">
+        ${esc(l.title[0] || '?')}
+        ${l.icon ? `<img src="${esc(iconUrl(l.icon))}" alt="" onerror="this.remove()">` : ''}
+      </div>
+      <span>${esc(l.title)}</span>
+    </button>`).join('');
+}
+
 /* ---------- text input (TV on-screen keyboard) ---------- */
 // Send only the difference between what was last sent and the field's new value.
 let sentText = '', textQueue = Promise.resolve();
@@ -637,6 +694,15 @@ const SC = {
   appletv:  ['Apple TV',  'app', 'com.apple.appletv', '#333', '', 'Apps'],
   spotify:  ['Spotify',   'app', 'spotify-beehive', '#1ed760', 'S', 'Apps'],
   livetv:   ['TV',        'app', 'com.webos.app.livetv', '#555', 'TV', 'Apps'],
+  hbomax:   ['HBO Max',   'appname', '\\bhbo\\b|^max$', '#002be7', 'M', 'Apps'],
+  movistar: ['Movistar+', 'appname', 'movistar', '#019df4', 'M+', 'Apps'],
+  dazn:     ['DAZN',      'appname', 'dazn', '#0c161c', 'D', 'Apps'],
+  skyshow:  ['SkyShowtime', 'appname', 'skyshowtime', '#1b1464', 'S', 'Apps'],
+  filmin:   ['Filmin',    'appname', 'filmin', '#ff2d55', 'F', 'Apps'],
+  atres:    ['atresplayer', 'appname', 'atres', '#ff7a1a', 'A', 'Apps'],
+  rtve:     ['RTVE Play', 'appname', 'rtve', '#e2001a', 'R', 'Apps'],
+  twitch:   ['Twitch',    'appname', 'twitch', '#9146ff', 'T', 'Apps'],
+  crunchy:  ['Crunchyroll', 'appname', 'crunchyroll', '#f47521', 'C', 'Apps'],
   night:    ['Noche',     'preset', 'night', '#3b3fa8', MOON, 'Imagen'],
   day:      ['Día',       'preset', 'day', '#b07a10', SUN, 'Imagen'],
   vivid:    ['Intenso',   'pic', 'vivid', '#7b5cff', PIC, 'Imagen'],
@@ -699,6 +765,7 @@ document.addEventListener('click', async e => {
     else if (d.media) await request('ssap://media.controls/' + d.media);
     else if (d.input) await request('ssap://tv/switchInput', { inputId:d.input });
     else if (d.app) await request('ssap://system.launcher/launch', { id:d.app });
+    else if (d.appname) await launchByName(d.appname, b.lastChild.textContent.trim());
     else if (d.pic) { await setPicture({ pictureMode:d.pic }); toast(b.textContent); setTimeout(refreshPicture, 800); }
     else if (d.preset) {
       for (const s of PRESETS[d.preset]) await setPicture(s);
@@ -741,6 +808,7 @@ $('#txtEnter').addEventListener('click', () => {
 $('#txtBack').addEventListener('click', () => { const i = $('#tvText'); i.value = i.value.slice(0, -1); syncText(); });
 $('#txtClear').addEventListener('click', () => { $('#tvText').value = ''; syncText(); });
 
+$('#reloadApps').addEventListener('click', loadApps);
 $('#numToggle').addEventListener('click', e => { e.currentTarget.classList.toggle('open'); $('#numpad').classList.toggle('open'); });
 $('#scrim').addEventListener('click', () => openSheet(null));
 $('#insecure').addEventListener('click', e => e.currentTarget.classList.toggle('on'));
