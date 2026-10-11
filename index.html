@@ -152,7 +152,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;heigh
 
 /* ---------- tab bar ---------- */
 nav{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 12px);display:flex;gap:4px;padding:5px;border-radius:30px;background:rgba(28,28,34,.7);-webkit-backdrop-filter:blur(24px) saturate(1.6);backdrop-filter:blur(24px) saturate(1.6);border:1px solid var(--line);box-shadow:0 10px 30px #000a;z-index:5}
-nav button{height:46px;padding:0 18px;border-radius:24px;grid-auto-flow:column;gap:7px;font-size:13px;font-weight:600;color:var(--mut)}
+nav button{width:76px;height:52px;border-radius:22px;grid-auto-flow:row;gap:2px;font-size:11px;font-weight:600;color:var(--mut);align-content:center}
 nav button svg{width:20px;height:20px}
 nav button.active{background:#ffffff1f;color:var(--txt)}
 
@@ -361,6 +361,44 @@ input[type=text]:focus{border-color:color-mix(in srgb,var(--acc) 70%,transparent
   <p class="note">Se aplica a la entrada y tipo de señal actuales (SDR, HDR o Dolby Vision). Pulsa cualquier botón del mando de la tele para volver a encender la pantalla.</p>
 </main>
 
+<!-- ===== SONIDO ===== -->
+<main class="view" id="v-sound">
+  <div class="group glass" style="margin-top:18px">
+    <div class="item slider">
+      <div class="top"><span>Volumen</span><span class="v" id="volVal">—</span></div>
+      <div class="stepper">
+        <button data-cmd="volDown" aria-label="Bajar volumen"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+        <input type="range" id="vol" min="0" max="100" step="1" value="10" aria-label="Volumen">
+        <button data-cmd="volUp" aria-label="Subir volumen"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      </div>
+    </div>
+    <button class="item" data-cmd="mute" style="width:100%;display:flex;text-align:left">
+      <span class="t">Silenciar</span><span class="v" id="muteVal">—</span>
+    </button>
+  </div>
+
+  <div class="label">Modo de sonido</div>
+  <div class="chips">
+    <button class="chip glass" data-sound="aiSoundPlus">Sonido IA Pro</button>
+    <button class="chip glass" data-sound="standard">Estándar</button>
+    <button class="chip glass" data-sound="movie">Cine</button>
+    <button class="chip glass" data-sound="news">Voz clara</button>
+    <button class="chip glass" data-sound="sports">Deportes</button>
+    <button class="chip glass" data-sound="music">Música</button>
+    <button class="chip glass" data-sound="game">Juegos</button>
+  </div>
+
+  <div class="label">Salida de audio</div>
+  <div class="chips">
+    <button class="chip glass" data-out="tv_speaker">Altavoces TV</button>
+    <button class="chip glass" data-out="external_arc">HDMI ARC / eARC</button>
+    <button class="chip glass" data-out="external_optical">Óptica</button>
+    <button class="chip glass" data-out="bt_soundbar">Bluetooth</button>
+    <button class="chip glass" data-out="tv_external_speaker">TV + óptica</button>
+  </div>
+  <p class="note">El modo de sonido solo se aplica a los altavoces de la tele. Con una barra de sonido por HDMI ARC u óptica, el modo se elige en la propia barra.</p>
+</main>
+
 <!-- ===== FUENTES ===== -->
 <main class="view" id="v-sources">
   <div class="label" style="margin-top:18px">Entradas</div>
@@ -401,6 +439,7 @@ input[type=text]:focus{border-color:color-mix(in srgb,var(--acc) 70%,transparent
 <nav>
   <button class="active" data-tab="v-remote"><svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="5"/><circle cx="12" cy="8" r="2"/></svg>Mando</button>
   <button data-tab="v-picture"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8"/></svg>Imagen</button>
+  <button data-tab="v-sound"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>Sonido</button>
   <button data-tab="v-sources"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>Fuentes</button>
 </nav>
 
@@ -589,6 +628,7 @@ function connect(){
         openPointer();
         refreshPicture();
         loadApps();
+        refreshSound();
       } else if (m.type === 'error') {
         setStatus('Rechazado'); toast(m.error || 'Emparejamiento rechazado');
       }
@@ -703,6 +743,36 @@ function setCtlMode(m){
   store.set('lg_ctl', m);
 }
 
+/* ---------- sound ---------- */
+function setVolUI(v, muted){
+  if (v != null) { v = Math.max(0, Math.min(100, Math.round(+v))); const r = $('#vol'); r.value = v; r.style.setProperty('--p', v + '%'); $('#volVal').textContent = v; }
+  if (muted != null) $('#muteVal').textContent = muted ? 'Sí' : 'No';
+}
+async function refreshVolume(){
+  try {
+    const r = await request('ssap://audio/getVolume');
+    const s = r.volumeStatus || r;  // newer webOS nests the values in volumeStatus
+    setVolUI(s.volume, s.muteStatus ?? s.muted);
+  } catch (e) { console.warn(e); }
+}
+async function refreshSound(){
+  refreshVolume();
+  try {
+    const r = await request('ssap://settings/getSystemSettings', { category:'sound', keys:['soundMode'] });
+    const m = (r.settings || {}).soundMode;
+    $$('[data-sound]').forEach(b => b.classList.toggle('sel', b.dataset.sound === m));
+  } catch (e) { console.warn(e); }
+  try {
+    const r = await request('ssap://audio/getSoundOutput');
+    $$('[data-out]').forEach(b => b.classList.toggle('sel', b.dataset.out === r.soundOutput));
+  } catch (e) { console.warn(e); }
+}
+let volTimer;
+function sendVolume(){
+  clearTimeout(volTimer);
+  volTimer = setTimeout(() => request('ssap://audio/setVolume', { volume: +$('#vol').value }).catch(() => {}), 120);
+}
+
 async function refreshPicture(){
   try {
     const r = await request('ssap://settings/getSystemSettings', { category:'picture', keys:['pictureMode','backlight','eyeComfortMode','energySaving'] });
@@ -770,6 +840,7 @@ function syncText(){
 const MOON = '<svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
 const SUN = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
 const PIC = '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/></svg>';
+const SPK = '<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>';
 const PLUG = '<svg viewBox="0 0 24 24"><path d="M5 9h14v6H5z"/><path d="M8 15v3M16 15v3"/></svg>';
 const SC = {
   // id: [label, data-attr, value, icon bg, icon (html or text), group]
@@ -802,6 +873,15 @@ const SC = {
   hdmi2:    ['HDMI 2',    'input', 'HDMI_2', '#0a84ff', PLUG, 'Entradas'],
   hdmi3:    ['HDMI 3',    'input', 'HDMI_3', '#0a84ff', PLUG, 'Entradas'],
   hdmi4:    ['HDMI 4',    'input', 'HDMI_4', '#0a84ff', PLUG, 'Entradas'],
+  sAi:      ['Sonido IA', 'sound', 'aiSoundPlus', '#00a3a3', SPK, 'Sonido'],
+  sStd:     ['Sonido estándar', 'sound', 'standard', '#00a3a3', SPK, 'Sonido'],
+  sMovie:   ['Sonido cine', 'sound', 'movie', '#00a3a3', SPK, 'Sonido'],
+  sNews:    ['Voz clara', 'sound', 'news', '#00a3a3', SPK, 'Sonido'],
+  sMusic:   ['Música', 'sound', 'music', '#00a3a3', SPK, 'Sonido'],
+  sGame:    ['Sonido juegos', 'sound', 'game', '#00a3a3', SPK, 'Sonido'],
+  oTv:      ['Altavoces TV', 'out', 'tv_speaker', '#2f6f4f', SPK, 'Sonido'],
+  oArc:     ['Barra (ARC)', 'out', 'external_arc', '#2f6f4f', SPK, 'Sonido'],
+  oBt:      ['Bluetooth', 'out', 'bt_soundbar', '#2f6f4f', SPK, 'Sonido'],
   screenOff:['Pantalla off', 'cmd', 'screenOff', '#444', '◐', 'Otros']
 };
 const SC_DEFAULT = ['netflix', 'youtube', 'night', 'day', 'cinema', 'hdmi1'];
@@ -833,11 +913,12 @@ const PRESETS = {
 const COMMANDS = {
   power:     () => request('ssap://system/turnOff'),
   screenOff: () => luna('com.webos.service.tvpower/power/turnOffScreen', {}),
-  volUp:     () => request('ssap://audio/volumeUp'),
-  volDown:   () => request('ssap://audio/volumeDown'),
+  volUp:     () => request('ssap://audio/volumeUp').then(refreshVolume),
+  volDown:   () => request('ssap://audio/volumeDown').then(refreshVolume),
   mute: async () => {
     const s = await request('ssap://audio/getStatus');
-    return request('ssap://audio/setMute', { mute: !s.mute });
+    await request('ssap://audio/setMute', { mute: !s.mute });
+    refreshVolume();
   }
 };
 
@@ -852,6 +933,14 @@ document.addEventListener('click', async e => {
     else if (d.input) await request('ssap://tv/switchInput', { inputId:d.input });
     else if (d.app) await request('ssap://system.launcher/launch', { id:d.app });
     else if (d.appname) await launchByName(d.appname, b.lastChild.textContent.trim());
+    else if (d.sound) {
+      await luna('com.webos.settingsservice/setSystemSettings', { category:'sound', settings:{ soundMode:d.sound } });
+      toast(b.lastChild.textContent.trim()); setTimeout(refreshSound, 800);
+    }
+    else if (d.out) {
+      await request('ssap://audio/changeSoundOutput', { output:d.out });
+      toast(b.lastChild.textContent.trim()); setTimeout(refreshSound, 1200);
+    }
     else if (d.pic) { await setPicture({ pictureMode:d.pic }); toast(b.textContent); setTimeout(refreshPicture, 800); }
     else if (d.preset) {
       for (const s of PRESETS[d.preset]) await setPicture(s);
@@ -896,6 +985,7 @@ $('#txtBack').addEventListener('click', () => { const i = $('#tvText'); i.value 
 $('#txtClear').addEventListener('click', () => { $('#tvText').value = ''; syncText(); });
 
 $('#reloadApps').addEventListener('click', loadApps);
+$('#vol').addEventListener('input', e => { setVolUI(e.target.value); sendVolume(); });
 $('#numToggle').addEventListener('click', e => { e.currentTarget.classList.toggle('open'); $('#numpad').classList.toggle('open'); });
 $('#scrim').addEventListener('click', () => openSheet(null));
 $('#insecure').addEventListener('click', e => e.currentTarget.classList.toggle('on'));
